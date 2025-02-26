@@ -1,21 +1,11 @@
-import sys
-
-try:
-    from convert_date import converter
-except ImportError:
-    print("There are some dependencies missing. Run the following command to install them:")
-    print("pip install -r requirements.txt")
-    sys.exit(1)
-
 from selenium.webdriver import Chrome
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import NoSuchElementException, TimeoutException, StaleElementReferenceException
+from selenium.common.exceptions import TimeoutException
 
+from convert_date import converter
 from time import sleep
 from bs4 import BeautifulSoup as bs
 from dataclasses import dataclass, asdict
@@ -70,7 +60,7 @@ class BettingSite:
 
         self.driver = Chrome(options=options)
 
-        self.wa = WebDriverWait(self.driver, 5)
+        self.wa = WebDriverWait(self.driver, 10)
 
     def parse_veri_bet(self, url: str):
         """
@@ -89,15 +79,21 @@ class BettingSite:
         self.driver.get(url)  # Navigate to the url
 
         # Wait for the page to load
-        self.wa.until(EC.presence_of_all_elements_located((By.CLASS_NAME, 'card-body')))
         while True:
-            card_bodys = self.driver.find_elements(By.CLASS_NAME, 'card-body')
-            card = card_bodys[0]
-            if 'loading' in card.text.lower():
-                self.driver.execute_script("arguments[0].scrollIntoView();", card)
-                continue
-            else:
+            try:
+                self.wa.until(EC.presence_of_all_elements_located((By.CLASS_NAME, 'card-body')))
+                while True:
+                    card_bodys = self.driver.find_elements(By.CLASS_NAME, 'card-body')
+                    card = card_bodys[0]
+                    if 'loading' in card.text.lower():
+                        self.driver.execute_script("arguments[0].scrollIntoView();", card)
+                        continue
+                    else:
+                        break
                 break
+            except TimeoutException:
+                self.driver.refresh()
+                continue
 
         page_source = self.driver.page_source  # Get the page source
 
@@ -107,167 +103,171 @@ class BettingSite:
         cards = soup.find_all('div', {'class': 'card-body'})
         headers = soup.find_all('div', {'class': 'card-header'})
 
+        # remove the 2 last useless cards
+        cards = cards[:-2]
+
         # If there are no cards in the page, return an empty list
         if len(cards) == 0:
             item = [headers[0].text.replace('\n', '').replace('\t', '').strip()]
             return item
         else: # Otherwise, parse the cards
-            card = cards[0]  # Get the first card
+            for card in cards:
+                # card = cards[0]  # Get the first card
 
-            rows = card.find_all('div', {'class': 'row'})  # Find all the rows in the card
+                rows = card.find_all('div', {'class': 'row'})  # Find all the rows in the card
 
-            # Initialize an empty list to store the parsed data
-            items = []
-            row = rows[0]
-            body = row.find('tbody')
-            spans = body.find_all('span')
+                for i in range(0, len(rows), 2): # Loop through the rows
+                    row = rows[i]
+                    items = []
+                    body = row.find('tbody')
+                    spans = body.find_all('span')
 
-            # Verify the period of the game
-            time_class = spans[0].get('class')[0]
-            if time_class == 'text-danger':
-                period = 'in progress'
-                if spans[2].text == 'FINAL':
-                    period = 'full time'
-            elif time_class == 'text-info':
-                period = 'soon'
-            else:
-                period = ''
+                    # Verify the period of the game
+                    time_class = spans[0].get('class')[0]
+                    if time_class == 'text-danger':
+                        period = 'in progress'
+                        if spans[2].text == 'FINAL':
+                            period = 'full time'
+                    elif time_class == 'text-info':
+                        period = 'soon'
+                    else:
+                        period = ''
 
-            dados = [span.text.replace('\t', '').replace('\n', '') for span in spans]  # Get the text of the spans
+                    dados = [span.text.replace('\t', '').replace('\n', '') for span in spans]  # Get the text of the spans
 
-            # Verify the number of elements in the list
-            if len(dados) == 28 or len(dados) == 29:
-                dados.pop(12)
-                dados.pop(7)
-                dados.pop(2)
+                    # Verify the number of elements in the list
+                    if len(dados) == 28 or len(dados) == 29:
+                        dados.pop(12)
+                        dados.pop(7)
+                        dados.pop(2)
 
-            date = dados[0]
-            event_date_utc = converter(date)  # Convert the date to UTC
+                    date = dados[0]
+                    event_date_utc = converter(date)  # Convert the date to UTC
 
-            # Get the game information
-            spread1 = dados[7]
-            if spread1 == 'N/A':
-                spread1_hand = spread1_price = spread1
-            else:
-                spread1_hand = float(spread1[:spread1.find('(')].strip())
-                spread1_price = spread1[spread1.find('(')+1:].strip().replace(')', '')
+                    # Get the game information
+                    spread1 = dados[7]
+                    if spread1 == 'N/A':
+                        spread1_hand = spread1_price = spread1
+                    else:
+                        spread1_hand = float(spread1[:spread1.find('(')].strip())
+                        spread1_price = spread1[spread1.find('(')+1:].strip().replace(')', '')
 
-            total1 = dados[8]
-            if total1 == 'N/A':
-                total1_spread = total1_price = total1
-            else:
-                total1_spread = total1[1:total1.find('(')].strip()
-                total1_price = total1[total1.find('(')+1:].strip().replace(')', '')
+                    total1 = dados[8]
+                    if total1 == 'N/A':
+                        total1_spread = total1_price = total1
+                    else:
+                        total1_spread = float(total1[1:total1.find('(')].strip())
+                        total1_price = total1[total1.find('(')+1:].strip().replace(')', '')
 
-            spread2 = dados[11]
-            if spread2 == 'N/A':
-                spread2_hand = spread2_price = spread2
-            else:
-                spread2_hand = float(spread2[:spread2.find('(')].strip())
-                spread2_price = spread2[spread2.find('(')+1:].strip().replace(')', '')
+                    spread2 = dados[11]
+                    if spread2 == 'N/A':
+                        spread2_hand = spread2_price = spread2
+                    else:
+                        spread2_hand = float(spread2[:spread2.find('(')].strip())
+                        spread2_price = spread2[spread2.find('(')+1:].strip().replace(')', '')
 
-            total2 = dados[12]
-            if total2 == 'N/A':
-                total2_spread = total2_price = total2
-            else:
-                total2_spread = total2[1:total2.find('(')].strip()
-                total2_price = total2[total2.find('(')+1:].strip().replace(')', '')
+                    total2 = dados[12]
+                    if total2 == 'N/A':
+                        total2_spread = total2_price = total2
+                    else:
+                        total2_spread = float(total2[1:total2.find('(')].strip())
+                        total2_price = total2[total2.find('(')+1:].strip().replace(')', '')
 
-            draw = dados[16].replace('DRAW', '').strip()  # Get the draw value
+                    draw = dados[16].replace('DRAW', '').strip()  # Get the draw value
 
-            percents = row.find_all('p')  # Find all the percents
+                    percents = row.find_all('p')  # Find all the percents
 
-            # Get the percents
-            team1_wins = percents[3].text
-            percent1 = team1_wins[team1_wins.find(':')+1:].strip()
-            team2_wins = percents[4].text
-            percent2 = team2_wins[team2_wins.find(':')+1:].strip()
+                    # Get the percents
+                    team1_wins = percents[3].text
+                    percent1 = team1_wins[team1_wins.find(':')+1:].strip()
+                    team2_wins = percents[4].text
+                    percent2 = team2_wins[team2_wins.find(':')+1:].strip()
 
-            # Check if the sport is soccer
-            isdraw = False
-            if sport == 'SOCCER':
-                team3_wins = body.find_all('p', {'class': 'text-warning'})[-1].text
-                percent3 = team3_wins[team3_wins.find(':')+1:].strip()
-                isdraw = True
-            else:
-                percent3 = ''
+                    # Check if the sport is soccer
+                    isdraw = False
+                    if sport == 'SOCCER':
+                        team3_wins = body.find_all('p', {'class': 'text-warning'})[-1].text
+                        percent3 = team3_wins[team3_wins.find(':')+1:].strip()
+                        isdraw = True
+                    else:
+                        percent3 = ''
 
-            team1 = {
-                'name': dados[5],
-                'moneyline': dados[6],
-                'spread': spread1_hand,
-                'spreadPrice': spread1_price,
-                'totalSide': 'over',
-                'totalSpread': total1_spread,
-                'totalPrice': total1_price
-            }
+                    team1 = {
+                        'name': dados[5],
+                        'moneyline': dados[6],
+                        'spread': spread1_hand,
+                        'spreadPrice': spread1_price,
+                        'totalSide': 'over',
+                        'totalSpread': total1_spread,
+                        'totalPrice': total1_price
+                    }
 
-            team2 = {
-                'name': dados[9],
-                'moneyline': dados[10],
-                'spread': spread2_hand,
-                'spreadPrice': spread2_price,
-                'totalSide': 'under',
-                'totalSpread': total2_spread,
-                'totalPrice': total2_price
-            }
-            
-            line_types = ('moneyline', 'spread', 'over/under') # Define the line types
+                    team2 = {
+                        'name': dados[9],
+                        'moneyline': dados[10],
+                        'spread': spread2_hand,
+                        'spreadPrice': spread2_price,
+                        'totalSide': 'under',
+                        'totalSpread': total2_spread,
+                        'totalPrice': total2_price
+                    }
+                    
+                    line_types = ('moneyline', 'spread', 'over/under') # Define the line types
 
-            if isdraw:
-                teams = [team1, team2, 'draw']
-            else:
-                teams = [team1, team2]
+                    if isdraw:
+                        teams = [team1, team2, 'draw']
+                    else:
+                        teams = [team1, team2]
 
-            # Loop through the teams
-            for line_type in line_types:
-                for team in teams: 
-                    try:
-                        side = team_line = team['name']
-                    except TypeError:
-                        side = team_line = team
-                    if line_type == 'moneyline':
-                        if team == 'draw':
-                            price = draw
-                        else:
-                            price = team['moneyline']
-                        spread = 0
-                    elif line_type == 'spread':
-                        if team == 'draw':
-                            continue
-                        price = team['spreadPrice']
-                        spread = team['spread']
-                    elif line_type == 'over/under':
-                        if team == 'draw':
-                            continue
-                        price = team['totalPrice']
-                        spread = team['totalSpread']
-                        side = team['totalSide']
-                        team_line = 'total'
+                    # Loop through the teams
+                    for line_type in line_types:
+                        for team in teams: 
+                            try:
+                                side = team_line = team['name']
+                            except TypeError:
+                                side = team_line = team
+                            if line_type == 'moneyline':
+                                if team == 'draw':
+                                    price = draw
+                                else:
+                                    price = team['moneyline']
+                                spread = 0
+                            elif line_type == 'spread':
+                                if team == 'draw':
+                                    continue
+                                price = team['spreadPrice']
+                                spread = team['spread']
+                            elif line_type == 'over/under':
+                                if team == 'draw':
+                                    continue
+                                price = team['totalPrice']
+                                spread = team['totalSpread']                            
+                                side = team['totalSide']
+                                team_line = 'total'
 
-                    item = Item(
-                        sport_league=sport,
-                        event_date_utc=event_date_utc,
-                        team1=team1['name'],
-                        team2=team2['name'],
-                        team1_percent=percent1,
-                        team2_percent=percent2,
-                        draw_percent=percent3,
-                        period=period,
-                        line_type=line_type,
-                        price=price,
-                        side=side,
-                        team=team_line,
-                        spread=spread,
-                    )
+                            item = Item(
+                                sport_league=sport,
+                                event_date_utc=event_date_utc,
+                                team1=team1['name'],
+                                team2=team2['name'],
+                                team1_percent=percent1,
+                                team2_percent=percent2,
+                                draw_percent=percent3,
+                                period=period,
+                                line_type=line_type,
+                                price=price,
+                                side=side,
+                                team=team_line,
+                                spread=spread,
+                            )
 
-                    items.append(item)
+                            items.append(item)
 
-            # Print the items as a json object
-            json_data = json.dumps([asdict(item) for item in items], indent=4)
-            print(json_data+'\n')
+                    # Print the items as a json object
+                    json_data = json.dumps([asdict(item) for item in items], indent=4)
+                    print(json_data+'\n')
 
-            sleep(1)
+                    sleep(1)
                     
 def run():
     """
@@ -279,10 +279,18 @@ def run():
     
     betting = BettingSite()
     betting.site_access()
+
+    # Loop through the urls
     while True:
-        for url in urls:
-            betting.parse_veri_bet(url)
-        sleep(5)
+        try:
+            for url in urls:
+                betting.parse_veri_bet(url)
+                sleep(1)
+            sleep(5)
+        except Exception as e:
+            sleep(5)
+            continue
+
 
 if __name__=='__main__':
     run()
