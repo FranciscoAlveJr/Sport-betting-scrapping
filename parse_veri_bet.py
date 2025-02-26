@@ -1,10 +1,13 @@
+import sys
+
 try:
-    from selenium.webdriver import Chrome
+    from convert_date import converter
 except ImportError:
     print("There are some dependencies missing. Run the following command to install them:")
     print("pip install -r requirements.txt")
     sys.exit(1)
-    
+
+from selenium.webdriver import Chrome
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -14,15 +17,10 @@ from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import NoSuchElementException, TimeoutException, StaleElementReferenceException
 
 from time import sleep
-from convert_date import converter
 from bs4 import BeautifulSoup as bs
-import re
 from dataclasses import dataclass, asdict
 import json
-from pprint import pprint
 import warnings
-import os
-import sys
 
 warnings.filterwarnings('ignore')
 
