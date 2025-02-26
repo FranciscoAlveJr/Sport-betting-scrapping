@@ -11,14 +11,14 @@ The JSON object is a dictionary where the key is the name of the sport and the v
 
 1. Clone the repository:<br>
    ```
-   git clone https://github.com/yourusername/sports-betting-odds-parser.git
+   git clone https://github.com/FranciscoAlveJr/Sport-betting-scrapping.git
    cd sports-betting-odds-parser
    ```
 
 2. Create a virtual environment:
    ```
    python -m venv venv
-   source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+   source venv/bin/activate  # On Windows use venv\Scripts\activate
    ```
 3. Install the required dependencies:
    ```
