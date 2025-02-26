@@ -20,12 +20,10 @@ import sys
 
 warnings.filterwarnings('ignore')
 
-url_football = 'https://sportsbetting.dog/picks/football'
 url_basketball = 'https://sportsbetting.dog/picks/basketball'
 url_baseball = 'https://sportsbetting.dog/picks/baseball'
 url_hockey = 'https://sportsbetting.dog/picks/hockey'
 url_soccer = 'https://sportsbetting.dog/picks/soccer'
-url_mma = 'https://sportsbetting.dog/picks/mma'
 
 urls = [url_basketball, url_baseball, url_hockey, url_soccer]
 
@@ -49,10 +47,11 @@ class Item:
 class BettingSite:    
     def site_access(self):
         """
-        Establishes a headless Chrome connection to the website and sets up a 2 second wait time.
+        Instantiates a Chrome driver with options to disable logging, suppress certificate/ssl errors, and run headlessly.
+        Creates a WebDriverWait object with a 5 second timeout period.
 
-        Returns:
-            None
+        :return: None
+        :rtype: NoneType
         """
         options = Options()
         options.add_argument('--silent')
@@ -81,28 +80,11 @@ class BettingSite:
 
         :return: A list of Item objects, which represent the parsed data.
         """
-        sport = url.split('/')[-1].upper()
+        sport = url.split('/')[-1].upper() # Get the sport name from the url
 
-        self.driver.get(url)
+        self.driver.get(url)  # Navigate to the url
 
         # Wait for the page to load
-        # while True:
-        #     try:
-        #         # waiting the word 'loading' to disappear in all cards
-        #         self.wa.until(EC.invisibility_of_element_located((By.CLASS_NAME, 'spinner-border')))
-        #         break
-        #     except TimeoutException:
-        #         try:
-        #             spinner = self.driver.find_element(By.CLASS_NAME, 'spinner-border')
-        #             self.driver.execute_script("arguments[0].scrollIntoView();", spinner)
-        #             self.wa.until(EC.invisibility_of_element((By.CLASS_NAME, 'spinner-border')))
-        #             continue
-        #         except NoSuchElementException:
-        #             break
-        #         except TimeoutException:
-        #             self.driver.refresh()
-        #             continue
-
         self.wa.until(EC.presence_of_all_elements_located((By.CLASS_NAME, 'card-body')))
         while True:
             card_bodys = self.driver.find_elements(By.CLASS_NAME, 'card-body')
@@ -113,36 +95,24 @@ class BettingSite:
             else:
                 break
 
-        page_source = self.driver.page_source
+        page_source = self.driver.page_source  # Get the page source
 
-        soup = bs(page_source, 'html.parser')
+        soup = bs(page_source, 'html.parser')  # Parse the page source with BeautifulSoup
 
-        # card_elements = self.driver.find_elements(By.CLASS_NAME, 'card-body')
+        # Find all the cards in the page
         cards = soup.find_all('div', {'class': 'card-body'})
         headers = soup.find_all('div', {'class': 'card-header'})
 
-        # Remove the last two cards
-        # cards = cards[:-2]
-
+        # If there are no cards in the page, return an empty list
         if len(cards) == 0:
             item = [headers[0].text.replace('\n', '').replace('\t', '').strip()]
             return item
-        else:
-            # for i, card in enumerate(cards):
-            card = cards[0]
-            # element = card_elements[0]
-            # self.driver.execute_script("arguments[0].scrollIntoView();", element)
-            # sleep(1)
+        else: # Otherwise, parse the cards
+            card = cards[0]  # Get the first card
 
-                # try:
-                #     sport_league = headers[i].text.replace('\n', '').replace('\t', '').strip()
-                # except IndexError:
-                #     sport_league = ''
+            rows = card.find_all('div', {'class': 'row'})  # Find all the rows in the card
 
-            rows = card.find_all('div', {'class': 'row'})
-
-
-                # for row in rows[::2]:
+            # Initialize an empty list to store the parsed data
             items = []
             row = rows[0]
             body = row.find('tbody')
@@ -159,16 +129,18 @@ class BettingSite:
             else:
                 period = ''
 
-            dados = [span.text.replace('\t', '').replace('\n', '') for span in spans]
+            dados = [span.text.replace('\t', '').replace('\n', '') for span in spans]  # Get the text of the spans
 
+            # Verify the number of elements in the list
             if len(dados) == 28 or len(dados) == 29:
                 dados.pop(12)
                 dados.pop(7)
                 dados.pop(2)
 
             date = dados[0]
-            event_date_utc = converter(date)
+            event_date_utc = converter(date)  # Convert the date to UTC
 
+            # Get the game information
             spread1 = dados[7]
             if spread1 == 'N/A':
                 spread1_hand = spread1_price = spread1
@@ -197,15 +169,17 @@ class BettingSite:
                 total2_spread = total2[1:total2.find('(')].strip()
                 total2_price = total2[total2.find('(')+1:].strip().replace(')', '')
 
-            draw = dados[16].replace('DRAW', '').strip()
+            draw = dados[16].replace('DRAW', '').strip()  # Get the draw value
 
-            percents = row.find_all('p')
+            percents = row.find_all('p')  # Find all the percents
 
+            # Get the percents
             team1_wins = percents[3].text
             percent1 = team1_wins[team1_wins.find(':')+1:].strip()
             team2_wins = percents[4].text
             percent2 = team2_wins[team2_wins.find(':')+1:].strip()
 
+            # Check if the sport is soccer
             isdraw = False
             if sport == 'SOCCER':
                 team3_wins = body.find_all('p', {'class': 'text-warning'})[-1].text
@@ -234,16 +208,16 @@ class BettingSite:
                 'totalPrice': total2_price
             }
             
-            line_types = ('moneyline', 'spread', 'over/under')
+            line_types = ('moneyline', 'spread', 'over/under') # Define the line types
 
             if isdraw:
                 teams = [team1, team2, 'draw']
             else:
                 teams = [team1, team2]
 
-
+            # Loop through the teams
             for line_type in line_types:
-                for team in teams:
+                for team in teams: 
                     try:
                         side = team_line = team['name']
                     except TypeError:
@@ -285,16 +259,11 @@ class BettingSite:
 
                     items.append(item)
 
+            # Print the items as a json object
             json_data = json.dumps([asdict(item) for item in items], indent=4)
             print(json_data+'\n')
 
             sleep(1)
-
-        # sleep(2)
-
-        # self.driver.quit()
-
-        # return items
                     
 def run():
     """
@@ -306,25 +275,10 @@ def run():
     
     betting = BettingSite()
     betting.site_access()
-    items_by_sports = {}
     while True:
         for url in urls:
-            sport = url.split('/')[-1]
-            # print(sport.upper())
-
-            items = betting.parse_veri_bet(url)
-            if sport not in items_by_sports:
-                items_by_sports[sport] = items
-
-            # json_data = json.dumps({sport: [asdict(item) for item in items]}, indent=4)
-
-            # print(json_data)
-
+            betting.parse_veri_bet(url)
         sleep(5)
-
-    # json_data = json.dumps({sport: [asdict(item) for item in items] for sport, items in items_by_sports.items()}, indent=4)
-
-    # print(json_data)
 
 if __name__=='__main__':
     run()
