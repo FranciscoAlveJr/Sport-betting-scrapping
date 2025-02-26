@@ -1,4 +1,10 @@
-from selenium.webdriver import Chrome
+try:
+    from selenium.webdriver import Chrome
+except ImportError:
+    print("There are some dependencies missing. Run the following command to install them:")
+    print("pip install -r requirements.txt")
+    sys.exit(1)
+    
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
